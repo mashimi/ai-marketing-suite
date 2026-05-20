@@ -181,4 +181,38 @@ router.delete(
   })
 )
 
+// Triggered by the UI when a user likes a draft
+router.post(
+  '/:id/approve',
+  asyncHandler(async (req: AuthRequest, res) => {
+    const piece = await prisma.contentPiece.update({
+      where: { id: req.params.id },
+      data: { approvalStatus: 'approved' }
+    });
+
+    // Automatically trigger WordPress/Social posting here if approved
+    // if (piece.type === 'blog') {
+    //   await PublishingService.pushToWordPress(piece);
+    // }
+
+    res.json({ success: true, status: 'approved' });
+  })
+);
+
+router.post(
+  '/:id/reject',
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { feedback } = req.body;
+    // Trigger a regeneration job with the feedback
+    await contentQueue.add('regenerate', { contentId: req.params.id, feedback });
+
+    await prisma.contentPiece.update({
+      where: { id: req.params.id },
+      data: { approvalStatus: 'rejected' }
+    });
+
+    res.json({ success: true, status: 'rejected_for_rewrite' });
+  })
+);
+
 export default router

@@ -4,8 +4,52 @@ export interface User {
   name: string;
   avatar?: string;
   role: 'admin' | 'member' | 'viewer';
-  plan: 'free' | 'pro' | 'enterprise';
+  plan: 'free' | 'pro' | 'enterprise' | 'starter';
   createdAt: string;
+  wallet?: TokenWallet;
+}
+
+export interface TokenWallet {
+  id: string;
+  userId: string;
+  balance: number;
+  reserved: number;
+  monthlyAllowance: number;
+  lastReset: string;
+}
+
+export interface TokenTransaction {
+  id: string;
+  walletId: string;
+  amount: number;
+  type: 'CREDIT' | 'DEBIT';
+  description: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TokenPackage {
+  id: string;
+  name: string;
+  description?: string;
+  tokenAmount: number;
+  priceUsd: number;
+  stripePriceId: string;
+  isActive: boolean;
+}
+
+export interface PlanDefinition {
+  id: string;
+  plan: 'free' | 'starter' | 'pro' | 'enterprise';
+  name: string;
+  description?: string;
+  monthlyTokens: number;
+  maxAgents: number;
+  maxProjects: number;
+  maxWorkflows: number;
+  features: string[];
+  stripePriceId: string;
+  isActive: boolean;
 }
 
 export interface Project {
@@ -58,7 +102,12 @@ export type AgentType =
   | 'keyword-research'
   | 'backlink-builder'
   | 'technical-seo'
-  | 'content-optimizer';
+  | 'content-optimizer'
+  | 'tiktok-monitor'
+  | 'tiktok-scriptwriter'
+  | 'meta-ad-manager'
+  | 'facebook-community'
+  | 'whatsapp-concierge';
 
 export interface AgentConfig {
   [key: string]: unknown;
@@ -133,7 +182,7 @@ export interface ContentPiece {
   projectId: string;
   title: string;
   type: 'blog' | 'social' | 'email' | 'landing' | 'ad';
-  status: 'draft' | 'review' | 'approved' | 'published';
+  status: 'draft' | 'review' | 'approved' | 'published' | 'scheduled';
   content: string;
   seoScore: number;
   readabilityScore: number;
@@ -141,6 +190,7 @@ export interface ContentPiece {
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
+  scheduledDate?: string;
   engagement?: ContentEngagement;
 }
 
@@ -154,12 +204,24 @@ export interface ContentEngagement {
 
 export interface SocialMonitor {
   id: string;
-  platform: 'reddit' | 'hackernews' | 'twitter' | 'linkedin';
+  platform: 'reddit' | 'hackernews' | 'twitter' | 'linkedin' | 'instagram';
   projectId: string;
   keywords: string[];
+  hashtags?: string[];
   mentions: SocialMention[];
   trending: TrendingTopic[];
   sentiment: SentimentAnalysis;
+  influencerMentions?: InfluencerMention[];
+  competitorProfiles?: string[];
+  lastSyncedAt?: string;
+}
+
+export interface InfluencerMention {
+  username: string;
+  followers: number;
+  engagement_rate: number;
+  mention_type: 'direct' | 'hashtag' | 'keyword';
+  reach: number;
 }
 
 export interface SocialMention {
@@ -260,4 +322,126 @@ export interface WorkflowRun {
   startedAt: string;
   completedAt?: string;
   results: Record<string, unknown>;
+}
+
+export interface Swarm {
+  id: string;
+  name: string;
+  description: string;
+  goal: string;
+  status: SwarmStatus;
+  strategy: SwarmStrategy;
+  projectId: string;
+  createdAt: string;
+  updatedAt: string;
+  members: SwarmMember[];
+  sessions: SwarmSession[];
+  _count?: {
+    sessions: number;
+  };
+}
+
+export interface SwarmMember {
+  id: string;
+  swarmId: string;
+  agentId: string;
+  agent: Agent;
+  role: SwarmRole;
+  order: number;
+  canDelegate: boolean;
+  config: Record<string, unknown>;
+}
+
+export interface SwarmSession {
+  id: string;
+  swarmId: string;
+  status: SessionStatus;
+  input: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  startedAt: string;
+  completedAt?: string;
+  messages: SwarmMessage[];
+  artifacts: SwarmArtifact[];
+}
+
+export interface SwarmMessage {
+  id: string;
+  sessionId: string;
+  fromAgentId: string;
+  toAgentId?: string;
+  type: MessageType;
+  content: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface SwarmArtifact {
+  id: string;
+  sessionId: string;
+  agentId: string;
+  type: string;
+  name: string;
+  content: Record<string, unknown>;
+  approved: boolean;
+  approvedBy?: string;
+  createdAt: string;
+}
+
+export type SwarmStatus = 'idle' | 'running' | 'completed' | 'error' | 'paused';
+export type SwarmStrategy = 'sequential' | 'parallel' | 'debate' | 'hierarchical';
+export type SwarmRole = 'coordinator' | 'researcher' | 'executor' | 'critic' | 'optimizer';
+export type SessionStatus = 'running' | 'synthesizing' | 'completed' | 'failed';
+export type MessageType = 'task' | 'observation' | 'question' | 'critique' | 'consensus' | 'delegate';
+
+export interface Competitor {
+  id: string;
+  domain: string;
+  name?: string;
+  logo?: string;
+  description?: string;
+  domainAuthority?: number;
+  backlinks: number;
+  organicKeywords: number;
+  organicTraffic: number;
+  contentPieces: number;
+  strengths: string[];
+  weaknesses: string[];
+  opportunities: string[];
+  threats: string[];
+  techStack: string[];
+  topTopics: string[];
+  lastAnalyzedAt?: string;
+  projectId: string;
+  snapshots?: CompetitorSnapshot[];
+  gaps?: CompetitorGap[];
+  _count?: {
+    snapshots: number;
+    gaps: number;
+  };
+}
+
+export interface CompetitorSnapshot {
+  id: string;
+  competitorId: string;
+  capturedAt: string;
+  domainAuthority?: number;
+  backlinks: number;
+  organicKeywords: number;
+  organicTraffic: number;
+  contentPieces: number;
+}
+
+export interface CompetitorGap {
+  id: string;
+  competitorId: string;
+  type: 'keyword' | 'content' | 'backlink' | 'technical';
+  priority: 'high' | 'medium' | 'low';
+  status: 'identified' | 'analyzing' | 'resolved';
+  theirAdvantage: string;
+  theirExample?: string;
+  ourState: string;
+  action: string;
+  estimatedImpact?: string;
+  difficulty: 'easy' | 'moderate' | 'hard';
+  createdAt: string;
 }

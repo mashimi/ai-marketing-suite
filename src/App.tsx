@@ -11,13 +11,22 @@ import SocialPage from '@/components/agents/SocialPage'
 import KeywordsPage from '@/components/agents/KeywordsPage'
 import AnalyticsPage from '@/components/dashboard/AnalyticsPage'
 import WorkflowsPage from '@/components/agents/WorkflowsPage'
-import SettingsPage from '@/components/SettingsPage'
+import SwarmsPage from '@/components/agents/SwarmsPage'
+import CompetitorPage from '@/components/agents/CompetitorPage'
 import LoginPage from '@/components/LoginPage'
+import BillingPage from '@/components/billing/BillingPage'
+import SettingsPage from '@/components/SettingsPage'
+import GEOMonitorPage from '@/pages/GEOMonitorPage'
+import { billingService } from '@/services/billing'
 import { Loader2, Sparkles } from 'lucide-react'
+import { useSocket } from '@/hooks/useSocket'
+import { notificationAPI } from '@/services/api'
+import { Toaster } from 'sonner'
 
 function App() {
-  const { isAuthenticated, login, logout, setProjects, currentProject, setCurrentProject } = useStore()
+  const { isAuthenticated, login, logout, setProjects, currentProject, setCurrentProject, setNotifications, setWallet } = useStore()
   const [isInitializing, setIsInitializing] = useState(true)
+  useSocket() // Initialize real-time listeners
 
   useEffect(() => {
     let cancelled = false
@@ -64,6 +73,12 @@ function App() {
         }
       }).catch(console.error)
 
+      // Fetch initial notifications
+      notificationAPI.list().then(setNotifications).catch(console.error)
+
+      // Fetch wallet
+      billingService.getWallet().then(setWallet).catch(console.error)
+
       // Add welcome notification if none exist
       if (useStore.getState().notifications.length === 0) {
         useStore.getState().addNotification({
@@ -77,7 +92,7 @@ function App() {
         })
       }
     }
-  }, [isAuthenticated, currentProject, setCurrentProject, setProjects])
+  }, [isAuthenticated, currentProject, setCurrentProject, setProjects, setNotifications])
 
   if (isInitializing) {
     return (
@@ -98,7 +113,9 @@ function App() {
   }
 
   return (
-    <Layout>
+    <>
+      <Toaster position="top-right" richColors />
+      <Layout>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
@@ -109,10 +126,15 @@ function App() {
         <Route path="/keywords" element={<KeywordsPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/workflows" element={<WorkflowsPage />} />
+        <Route path="/swarms" element={<SwarmsPage />} />
+        <Route path="/competitors" element={<CompetitorPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/billing" element={<BillingPage />} />
+        <Route path="/geo" element={<GEOMonitorPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-    </Layout>
+      </Layout>
+    </>
   )
 }
 

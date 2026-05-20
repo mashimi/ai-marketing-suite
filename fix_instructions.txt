@@ -1,0 +1,38 @@
+# GEO System TypeScript Error Fixes - Implementation Plan
+
+## Overview
+After reviewing the schema.prisma and all affected source files, the following issues need to be fixed:
+
+## Errors by Category
+
+### Category 1: Prisma Client Out of Sync (Error 2339 - 39 occurrences)
+The Prisma schema contains all the GEO models (GEOCitationSource, GEOQueryCluster, GEOABTest, GEOABTestVariant, GEOEntityCoverage, GEOReviewQueue, GEOCompetitorCitation) but the generated Prisma client doesn't have them. The property name conventions are correct.
+
+**Fix:** Run `npx prisma generate` to regenerate the Prisma client.
+
+### Category 2: Implicit 'any' Parameters (Error 7006 - 11 occurrences)
+Files: `ab-test.ts`, `citation-index.ts`, `entity-analyzer.ts`, `review-queue.ts`
+
+**Fix:** Add proper type annotations to callback parameters in `.find()`, `.filter()`, `.map()`, `.sort()` methods.
+
+### Category 3: BrandVoiceProfile JSON Type Mismatch (Error 2322 - 1 occurrence)
+File: `geoMonitor.ts` line 343
+`brandVoiceProfile: brandVoice as any` fails because `BrandVoiceProfile` interface doesn't match `InputJsonValue` type.
+
+**Fix:** Use `JSON.parse(JSON.stringify(brandVoice))` or proper Prisma JSON casting.
+
+### Category 4: tsconfig Deprecation Warnings (2 files)
+- `backend/tsconfig.json`: `moduleResolution=node10` deprecated
+- `tsconfig.json` (root): `baseUrl` deprecated
+
+**Fix:** Add `"ignoreDeprecations": "6.0"` to silence these warnings.
+
+## Files to Modify
+1. `backend/src/services/geo/ab-test.ts` - Add type annotations (7 occurrences)
+2. `backend/src/services/geo/citation-index.ts` - Add type annotations (2 occurrences)
+3. `backend/src/services/geo/entity-analyzer.ts` - Add type annotations (4 occurrences)
+4. `backend/src/services/geo/review-queue.ts` - Add type annotations (4 occurrences)
+5. `backend/src/services/geoMonitor.ts` - Fix BrandVoiceProfile JSON typing (1 occurrence)
+6. `backend/tsconfig.json` - Add ignoreDeprecations
+7. `tsconfig.json` (root) - Add ignoreDeprecations
+8. Run `npx prisma generate` to regenerate client

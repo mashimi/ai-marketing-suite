@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/db'
 import { workflowQueue } from '../jobs/queue'
@@ -21,7 +21,7 @@ router.use(authenticate)
 
 router.get(
   '/',
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const { projectId } = req.query
 
     const workflows = await prisma.workflow.findMany({
@@ -49,7 +49,7 @@ router.get(
 
 router.get(
   '/:id',
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const workflow = await prisma.workflow.findFirst({
       where: {
         id: req.params.id,
@@ -77,7 +77,7 @@ router.get(
 router.post(
   '/',
   validate(createSchema),
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const { name, description, agents, trigger, schedule, projectId } = req.body
 
     const project = await prisma.project.findFirst({
@@ -128,7 +128,7 @@ router.post(
 
 router.patch(
   '/:id',
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const workflow = await prisma.workflow.findFirst({
       where: {
         id: req.params.id,
@@ -156,7 +156,7 @@ router.patch(
 
 router.delete(
   '/:id',
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const workflow = await prisma.workflow.deleteMany({
       where: {
         id: req.params.id,
@@ -174,7 +174,7 @@ router.delete(
 
 router.post(
   '/:id/run',
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const workflow = await prisma.workflow.findFirst({
       where: {
         id: req.params.id,

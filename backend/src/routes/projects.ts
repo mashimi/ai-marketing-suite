@@ -62,6 +62,7 @@ router.get(
         userId: req.user!.id,
       },
       include: {
+        analytics: true,
         agents: {
           include: { metrics: true },
         },
@@ -83,8 +84,8 @@ router.get(
     const projectWithMetrics = {
       ...project,
       metrics: {
-        totalTraffic: project.analytics.reduce((acc, a) => acc + a.traffic, 0) || 12450,
-        organicTraffic: project.analytics.reduce((acc, a) => acc + a.organic, 0) || 8920,
+        totalTraffic: project.analytics.reduce((acc: number, a: any) => acc + a.traffic, 0) || 12450,
+        organicTraffic: project.analytics.reduce((acc: number, a: any) => acc + a.organic, 0) || 8920,
         keywordRankings: project._count.keywords || 42,
         backlinks: 1240,
         domainAuthority: 45,

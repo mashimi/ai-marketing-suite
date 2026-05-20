@@ -11,13 +11,14 @@ import {
   Check,
   Zap,
   Building2,
+  Coins,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { cn } from '@/utils/cn'
 import { formatRelativeTime } from '@/utils/format'
 
 export default function Header() {
-  const { user, logout, notifications, markNotificationRead, markAllNotificationsRead, currentProject, projects, setCurrentProject } = useStore()
+  const { user, logout, notifications, markNotificationRead, markAllNotificationsRead, currentProject, projects, setCurrentProject, wallet } = useStore()
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [showProjectSwitcher, setShowProjectSwitcher] = useState(false)
@@ -93,6 +94,17 @@ export default function Header() {
 
       {/* Right side */}
       <div className="flex items-center gap-3">
+        {/* Token Balance */}
+        <button
+          onClick={() => navigate('/billing')}
+          className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 transition-all group"
+        >
+          <Coins className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+          <span className="text-sm font-bold text-amber-200">
+            {wallet?.balance.toLocaleString() || '0'}
+          </span>
+        </button>
+
         {/* Quick Actions */}
         <button
           onClick={() => navigate('/agents?create=true')}

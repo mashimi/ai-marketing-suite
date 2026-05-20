@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  Users,
+  Target,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { cn } from '@/utils/cn'
@@ -26,6 +28,9 @@ const navItems = [
   { path: '/keywords', label: 'Keywords', icon: Key },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
   { path: '/workflows', label: 'Workflows', icon: Workflow },
+  { path: '/swarms', label: 'Swarm Hub', icon: Users },
+  { path: '/competitors', label: 'Competitors', icon: Target },
+  { path: '/geo', label: 'GEO Engine', icon: Search },
   { path: '/settings', label: 'Settings', icon: Settings },
 ]
 

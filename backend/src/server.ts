@@ -1,12 +1,12 @@
+import 'dotenv/config' // MUST be first — loads .env before any other module initializes
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import compression from 'compression'
 import morgan from 'morgan'
-import dotenv from 'dotenv'
 import rateLimit from 'express-rate-limit'
-
-dotenv.config()
+import { createServer } from 'http'
+import { Server } from 'socket.io'
 
 import { logger } from './lib/logger'
 import { errorHandler } from './middleware/error'
@@ -22,8 +22,35 @@ import keywordRoutes from './routes/keywords'
 import analyticsRoutes from './routes/analytics'
 import workflowRoutes from './routes/workflows'
 import notificationRoutes from './routes/notifications'
+import reportRoutes from './routes/reports'
+import aiRoutes from './routes/ai'
+import swarmRoutes from './routes/swarms'
+import competitorRoutes from './routes/competitors'
+import billingRoutes from './routes/billing'
+import geoRoutes from './routes/geo'
+import { integrationRoutes } from './routes/integrations'
+import { eventBus } from './lib/event-bus'
+import { prisma } from './lib/db'
+import './workers/swarm.worker' // Initialize worker
+import { initCronJobs } from './jobs/cron'
+
+initCronJobs()
 
 const app = express()
+const httpServer = createServer(app)
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3000',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+]
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+  },
+})
 const PORT = process.env.PORT || 3001
 
 // Security middleware
@@ -32,7 +59,12 @@ app.use(helmet({
 }))
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. curl, Postman)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS: origin '${origin}' not allowed`))
+  },
   credentials: true,
 }))
 
@@ -46,7 +78,14 @@ const limiter = rateLimit({
 app.use('/api/', limiter)
 
 // Body parsing
-app.use(express.json({ limit: '10mb' }))
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req: any, res, buf) => {
+    if (req.originalUrl?.startsWith('/api/billing/webhook')) {
+      req.rawBody = buf
+    }
+  }
+}))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Logging
@@ -78,6 +117,13 @@ app.use('/api/keywords', keywordRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/workflows', workflowRoutes)
 app.use('/api/notifications', notificationRoutes)
+app.use('/api/reports', reportRoutes)
+app.use('/api/ai', aiRoutes)
+app.use('/api/swarms', swarmRoutes)
+app.use('/api/competitors', competitorRoutes)
+app.use('/api/billing', billingRoutes)
+app.use('/api/geo', geoRoutes)
+app.use('/api/integrations', integrationRoutes)
 
 // Error handling
 app.use(errorHandler)
@@ -87,9 +133,32 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' })
 })
 
-app.listen(PORT, () => {
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  logger.info(`Socket connected: ${socket.id}`)
+
+  socket.on('join_project', (projectId: string) => {
+    socket.join(`project:${projectId}`)
+    logger.info(`Socket ${socket.id} joined project: ${projectId}`)
+  })
+
+  socket.on('disconnect', () => {
+    logger.info(`Socket disconnected: ${socket.id}`)
+  })
+})
+
+// Attach io to the app for use in routes
+app.set('io', io)
+
+// Export io so BullMQ workers can emit real-time events
+export { io }
+
+httpServer.listen(PORT, async () => {
   logger.info(`Server running on port ${PORT}`)
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`)
+
+  // Start event bus consumer in the background
+  eventBus.startConsumer().catch(err => logger.error('Event bus consumer failed', err))
 })
 
 export default app

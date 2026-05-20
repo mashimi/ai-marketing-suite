@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -26,6 +26,7 @@ import {
   BarChart3,
   X,
 } from 'lucide-react'
+import { AgentTerminal } from './AgentTerminal'
 import { useStore } from '@/store'
 import { agentAPI } from '@/services/api'
 import { AGENT_TYPES } from '@/utils/constants'
@@ -51,12 +52,19 @@ export default function AgentsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
+  const [isDeployingDefaults, setIsDeployingDefaults] = useState(false)
   const queryClient = useQueryClient()
 
   const { data: agentList } = useQuery({
     queryKey: ['agents', currentProject?.id],
     queryFn: () => agentAPI.list(currentProject?.id),
   })
+
+  useEffect(() => {
+    if (agentList) {
+      setAgents(agentList)
+    }
+  }, [agentList, setAgents])
 
   const runMutation = useMutation({
     mutationFn: agentAPI.run,
@@ -82,6 +90,74 @@ export default function AgentsPage() {
       toast.success('Agent deleted')
     },
   })
+
+  const handleDeployDefaults = async () => {
+    if (!currentProject) return
+    setIsDeployingDefaults(true)
+    const loadingToast = toast.loading('Deploying standard marketing agents...')
+
+    const defaultAgents = [
+      {
+        name: 'SEO Audit Agent',
+        type: 'seo-audit' as const,
+        description: 'Comprehensive website SEO analysis and recommendations',
+        icon: 'Search',
+        frequency: 'daily' as const,
+      },
+      {
+        name: 'GEO Optimizer',
+        type: 'geo-optimization' as const,
+        description: 'Optimize content for AI search engines (ChatGPT, Claude, Perplexity)',
+        icon: 'Brain',
+        frequency: 'daily' as const,
+      },
+      {
+        name: 'AI Content Writer',
+        type: 'content-writer' as const,
+        description: 'Generate SEO-optimized blog posts and content',
+        icon: 'PenTool',
+        frequency: 'weekly' as const,
+      },
+      {
+        name: 'Reddit Monitor',
+        type: 'reddit-monitor' as const,
+        description: 'Track mentions and opportunities on Reddit',
+        icon: 'MessageSquare',
+        frequency: 'hourly' as const,
+      },
+      {
+        name: 'Competitor Analysis',
+        type: 'competitor-analysis' as const,
+        description: 'Analyze competitor strategies and performance',
+        icon: 'Target',
+        frequency: 'weekly' as const,
+      },
+    ]
+
+    try {
+      for (const agentData of defaultAgents) {
+        await agentAPI.create({
+          name: agentData.name,
+          type: agentData.type,
+          status: 'idle',
+          description: agentData.description,
+          icon: agentData.icon,
+          frequency: agentData.frequency,
+          projectId: currentProject.id,
+          config: {},
+        })
+      }
+      queryClient.invalidateQueries({ queryKey: ['agents'] })
+      toast.dismiss(loadingToast)
+      toast.success('Deployed 5 marketing agents successfully!')
+    } catch (error) {
+      toast.dismiss(loadingToast)
+      toast.error('Failed to deploy default agents')
+      console.error(error)
+    } finally {
+      setIsDeployingDefaults(false)
+    }
+  }
 
   const filteredAgents = agents.filter(
     (a) =>
@@ -136,6 +212,11 @@ export default function AgentsPage() {
         </div>
       </div>
 
+      {/* Live Agent Terminal */}
+      {currentProject && (
+        <AgentTerminal projectId={currentProject.id} className="mb-6" />
+      )}
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -149,107 +230,147 @@ export default function AgentsPage() {
       </div>
 
       {/* Agents Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <AnimatePresence>
-          {filteredAgents.map((agent) => {
-            const Icon = iconMap[agent.icon] || Sparkles
-            const status = statusConfig[agent.status]
-            const StatusIcon = status.icon
+      {agents.length === 0 ? (
+        <div className="bg-card border border-border rounded-2xl p-8 text-center max-w-xl mx-auto flex flex-col items-center gap-6 mt-8">
+          <div className="p-4 bg-primary/10 rounded-2xl text-primary animate-pulse">
+            <Brain className="w-10 h-10" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-foreground">Deploy Your AI Agent Workforce</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
+              This project does not have any AI agents deployed yet. You can deploy specialized marketing agents to automatically audit your SEO, write content, and monitor social media channels.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Deploy Custom Agent</span>
+            </button>
+            <button
+              onClick={handleDeployDefaults}
+              disabled={isDeployingDefaults}
+              className="px-5 py-2.5 bg-accent text-accent-foreground font-semibold rounded-xl hover:bg-accent/80 transition-colors border border-border flex items-center justify-center gap-2"
+            >
+              {isDeployingDefaults ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span>Deploying...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-yellow-500" />
+                  <span>Quick Deploy 5 Marketing Agents</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <AnimatePresence>
+            {filteredAgents.map((agent) => {
+              const Icon = iconMap[agent.icon] || Sparkles
+              const status = statusConfig[agent.status]
+              const StatusIcon = status.icon
 
-            return (
-              <motion.div
-                key={agent.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-card border border-border rounded-xl p-5 card-hover group"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={cn('p-2.5 rounded-xl', status.bg)}>
-                      <Icon className={cn('w-5 h-5', status.color)} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">{agent.name}</h3>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <StatusIcon
-                          className={cn(
-                            'w-3 h-3',
-                            status.color,
-                            agent.status === 'running' && 'animate-spin'
-                          )}
-                        />
-                        <span className={cn('text-xs', status.color)}>{status.label}</span>
+              return (
+                <motion.div
+                  key={agent.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-card border border-border rounded-xl p-5 card-hover group"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={cn('p-2.5 rounded-xl', status.bg)}>
+                        <Icon className={cn('w-5 h-5', status.color)} />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm">{agent.name}</h3>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <StatusIcon
+                            className={cn(
+                              'w-3 h-3',
+                              status.color,
+                              agent.status === 'running' && 'animate-spin'
+                            )}
+                          />
+                          <span className={cn('text-xs', status.color)}>{status.label}</span>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {agent.status === 'running' ? (
+                        <button
+                          onClick={() => stopMutation.mutate(agent.id)}
+                          className="p-1.5 rounded-lg hover:bg-accent transition-colors"
+                        >
+                          <Pause className="w-4 h-4 text-yellow-400" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => runMutation.mutate(agent.id)}
+                          className="p-1.5 rounded-lg hover:bg-accent transition-colors"
+                        >
+                          <Play className="w-4 h-4 text-green-400" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedAgent(agent)}
+                        className="p-1.5 rounded-lg hover:bg-accent transition-colors"
+                      >
+                        <Settings className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                      <button
+                        onClick={() => deleteMutation.mutate(agent.id)}
+                        className="p-1.5 rounded-lg hover:bg-accent transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-400" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {agent.status === 'running' ? (
-                      <button
-                        onClick={() => stopMutation.mutate(agent.id)}
-                        className="p-1.5 rounded-lg hover:bg-accent transition-colors"
-                      >
-                        <Pause className="w-4 h-4 text-yellow-400" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => runMutation.mutate(agent.id)}
-                        className="p-1.5 rounded-lg hover:bg-accent transition-colors"
-                      >
-                        <Play className="w-4 h-4 text-green-400" />
-                      </button>
+
+                  <p className="text-sm text-muted-foreground mb-4">{agent.description}</p>
+
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-accent/30 rounded-lg p-2.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Tasks</p>
+                      <p className="text-sm font-semibold">{formatNumber(agent.metrics.tasksCompleted)}</p>
+                    </div>
+                    <div className="bg-accent/30 rounded-lg p-2.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Success</p>
+                      <p className="text-sm font-semibold">{agent.metrics.successRate}%</p>
+                    </div>
+                    <div className="bg-accent/30 rounded-lg p-2.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Impact</p>
+                      <p className="text-sm font-semibold">{agent.metrics.impactScore}/100</p>
+                    </div>
+                    <div className="bg-accent/30 rounded-lg p-2.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Time</p>
+                      <p className="text-sm font-semibold">{agent.metrics.avgExecutionTime}s</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border">
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      <span>{agent.frequency}</span>
+                    </div>
+                    {agent.lastRun && (
+                      <span>Last: {formatRelativeTime(agent.lastRun)}</span>
                     )}
-                    <button
-                      onClick={() => setSelectedAgent(agent)}
-                      className="p-1.5 rounded-lg hover:bg-accent transition-colors"
-                    >
-                      <Settings className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                    <button
-                      onClick={() => deleteMutation.mutate(agent.id)}
-                      className="p-1.5 rounded-lg hover:bg-accent transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-400" />
-                    </button>
                   </div>
-                </div>
-
-                <p className="text-sm text-muted-foreground mb-4">{agent.description}</p>
-
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-accent/30 rounded-lg p-2.5">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Tasks</p>
-                    <p className="text-sm font-semibold">{formatNumber(agent.metrics.tasksCompleted)}</p>
-                  </div>
-                  <div className="bg-accent/30 rounded-lg p-2.5">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Success</p>
-                    <p className="text-sm font-semibold">{agent.metrics.successRate}%</p>
-                  </div>
-                  <div className="bg-accent/30 rounded-lg p-2.5">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Impact</p>
-                    <p className="text-sm font-semibold">{agent.metrics.impactScore}/100</p>
-                  </div>
-                  <div className="bg-accent/30 rounded-lg p-2.5">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Time</p>
-                    <p className="text-sm font-semibold">{agent.metrics.avgExecutionTime}s</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border">
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    <span>{agent.frequency}</span>
-                  </div>
-                  {agent.lastRun && (
-                    <span>Last: {formatRelativeTime(agent.lastRun)}</span>
-                  )}
-                </div>
-              </motion.div>
-            )
-          })}
-        </AnimatePresence>
-      </div>
+                </motion.div>
+              )
+            })}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Create Modal */}
       <AnimatePresence>

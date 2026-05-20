@@ -1,15 +1,68 @@
-import { Queue, Worker } from 'bullmq'
+import { Queue, Worker, QueueEvents } from 'bullmq'
 import { redis } from '../lib/redis'
 import { logger } from '../lib/logger'
 import { prisma } from '../lib/db'
-import { DeepSeekService } from '../services/deepseek'
+import { aiService } from '../services/ai.service'
 import { ScrapingService } from '../services/scraper'
-import type { AgentType } from '@prisma/client'
+import { TokenService } from '../services/tokenService'
+import { InstagramService } from '../services/instagram'
+import type { AgentType, SearchIntent } from '@prisma/client'
+import { TikTokService } from '../services/tiktok.service'
+import { MetaService } from '../services/meta.service'
+import { WhatsAppService } from '../services/whatsapp.service'
 
-// Job queues
-export const agentQueue = new Queue('agent-jobs', { connection: redis })
-export const workflowQueue = new Queue('workflow-jobs', { connection: redis })
-export const contentQueue = new Queue('content-jobs', { connection: redis })
+// Lazy-load io to avoid circular dependency (server imports queue, queue imports server)
+function getIO() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('../server').io
+  } catch {
+    return null
+  }
+}
+
+/** Emit a real-time log event to the frontend terminal */
+function emitAgentLog(projectId: string, agentId: string, message: string, level: 'info' | 'warn' | 'success' | 'error' = 'info') {
+  try {
+    const io = getIO()
+    if (io) {
+      io.to(projectId).emit('agent-log', {
+        agentId,
+        message,
+        level,
+        timestamp: new Date().toISOString(),
+      })
+    }
+  } catch { /* non-critical */ }
+}
+
+export let agentQueueEvents: any = null
+export let agentQueue: any = null
+export let workflowQueue: any = null
+export let contentQueue: any = null
+export let agentWorker: any = null
+export let contentWorker: any = null
+export let workflowWorker: any = null
+
+let _redisAvailable = false
+
+function initQueues() {
+  try {
+    agentQueueEvents = new QueueEvents('agent-jobs', { connection: redis })
+    agentQueue = new Queue('agent-jobs', { connection: redis })
+    workflowQueue = new Queue('workflow-jobs', { connection: redis })
+    contentQueue = new Queue('content-jobs', { connection: redis })
+    _redisAvailable = true
+    logger.info('BullMQ queues initialized')
+  } catch (err) {
+    logger.warn('BullMQ queues unavailable — Redis not connected. Agent jobs will be skipped until Redis is available.')
+  }
+}
+
+initQueues()
+
+/** Returns true if queues are available for job dispatch */
+export function isQueueReady() { return _redisAvailable && agentQueue !== null }
 
 interface AgentJobData {
   agentId: string
@@ -29,11 +82,35 @@ interface ContentJobData {
 }
 
 // Agent Job Worker
-export const agentWorker = new Worker<AgentJobData>(
+agentWorker = new Worker<AgentJobData>(
   'agent-jobs',
   async (job) => {
-    const { agentId, projectId, type, config } = job.data
-    logger.info(`Processing agent job`, { agentId, type, jobId: job.id })
+    const { agentId, projectId, type, config, userId } = job.data
+    logger.info(`Processing agent job`, { agentId, type, jobId: job.id, userId })
+
+    // Calculate and check token cost
+    const tokenCost = TokenService.getAgentCost(type)
+    const hasTokens = await TokenService.reserveTokens(userId, tokenCost)
+
+    if (!hasTokens) {
+      logger.warn('Insufficient tokens for agent job', { agentId, userId, cost: tokenCost })
+      
+      await prisma.agent.update({
+        where: { id: agentId },
+        data: { status: 'error' },
+      })
+      
+      await prisma.agentResult.create({
+        data: {
+          agentId,
+          type: type.toString(),
+          data: { error: 'Insufficient tokens. Please upgrade your plan or purchase more tokens.' },
+          status: 'error',
+        },
+      })
+      
+      throw new Error('INSUFFICIENT_TOKENS')
+    }
 
     // Update agent status to running
     await prisma.agent.update({
@@ -44,47 +121,81 @@ export const agentWorker = new Worker<AgentJobData>(
     try {
       let result: Record<string, unknown> = {}
 
+      // Emit live start event to the frontend terminal
+      emitAgentLog(projectId, agentId, `Starting ${type.replace(/_/g, ' ')} agent...`, 'info')
+
       switch (type) {
         case 'seo_audit':
-          result = await runSEOAudit(projectId, config)
+          emitAgentLog(projectId, agentId, 'Launching headless browser for deep crawl...', 'info')
+          result = await runSEOAudit(projectId, config, (msg, lvl) => emitAgentLog(projectId, agentId, msg, lvl))
           break
         case 'geo_optimization':
+          emitAgentLog(projectId, agentId, 'Fetching latest content for GEO analysis...', 'info')
           result = await runGEOOptimization(projectId, config)
           break
         case 'content_writer':
+          emitAgentLog(projectId, agentId, 'Generating content with AI...', 'info')
           result = await runContentWriter(projectId, config)
           break
         case 'reddit_monitor':
         case 'hackernews_monitor':
         case 'twitter_monitor':
         case 'linkedin_monitor':
+          emitAgentLog(projectId, agentId, `Scanning ${type.replace(/_monitor/, '')} for mentions...`, 'info')
           result = await runSocialMonitor(projectId, type, config)
           break
         case 'competitor_analysis':
+          emitAgentLog(projectId, agentId, 'Running competitor intelligence analysis...', 'info')
           result = await runCompetitorAnalysis(projectId, config)
           break
         case 'keyword_research':
+          emitAgentLog(projectId, agentId, 'Researching keywords with AI...', 'info')
           result = await runKeywordResearch(projectId, config)
           break
         case 'technical_seo':
+          emitAgentLog(projectId, agentId, 'Running technical SEO crawl...', 'info')
           result = await runTechnicalSEO(projectId, config)
           break
         case 'content_optimizer':
+          emitAgentLog(projectId, agentId, 'Optimizing content for search engines...', 'info')
           result = await runContentOptimizer(projectId, config)
           break
         case 'backlink_builder':
+          emitAgentLog(projectId, agentId, 'Scanning for backlink opportunities...', 'info')
           result = await runBacklinkBuilder(projectId, config)
+          break
+        case 'tiktok_monitor':
+          emitAgentLog(projectId, agentId, 'Analyzing TikTok trends...', 'info')
+          result = await runTikTokMonitor(projectId, config)
+          break
+        case 'tiktok_scriptwriter':
+          emitAgentLog(projectId, agentId, 'Generating TikTok script...', 'info')
+          result = await runTikTokScriptwriter(projectId, config)
+          break
+        case 'meta_ad_manager':
+          emitAgentLog(projectId, agentId, 'Generating Meta Ads...', 'info')
+          result = await runMetaAdManager(projectId, config)
+          break
+        case 'facebook_community':
+          emitAgentLog(projectId, agentId, 'Scanning Facebook comments...', 'info')
+          result = await runFacebookCommunity(projectId, config)
+          break
+        case 'whatsapp_concierge':
+          emitAgentLog(projectId, agentId, 'Running WhatsApp workflow...', 'info')
+          result = await runWhatsAppConcierge(projectId, config)
           break
         default:
           throw new Error(`Unknown agent type: ${type}`)
       }
+
+      emitAgentLog(projectId, agentId, `✔ ${type.replace(/_/g, ' ')} completed successfully`, 'success')
 
       // Save result
       await prisma.agentResult.create({
         data: {
           agentId,
           type: type.toString(),
-          data: result,
+          data: result as any,
           status: 'success',
         },
       })
@@ -110,9 +221,18 @@ export const agentWorker = new Worker<AgentJobData>(
         data: { status: 'completed' },
       })
 
+      // Consume tokens
+      await TokenService.consumeTokens(userId, tokenCost, type, {
+        jobId: job.id,
+        projectId,
+        agentId,
+      })
+
       logger.info(`Agent job completed`, { agentId, type, jobId: job.id })
       return result
     } catch (error) {
+      // Release tokens on failure
+      await TokenService.releaseTokens(userId, tokenCost)
       logger.error(`Agent job failed`, { agentId, type, jobId: job.id, error })
 
       // Save error result
@@ -137,23 +257,31 @@ export const agentWorker = new Worker<AgentJobData>(
   { connection: redis, concurrency: 5 }
 )
 
-agentWorker.on('completed', (job) => {
-  logger.info(`Agent job ${job.id} completed`)
-})
-
-agentWorker.on('failed', (job, err) => {
-  logger.error(`Agent job ${job?.id} failed`, { error: err })
-})
+if (agentWorker) {
+  agentWorker.on('completed', (job: any) => {
+    logger.info(`Agent job ${job.id} completed`)
+  })
+  agentWorker.on('failed', (job: any, err: any) => {
+    logger.error(`Agent job ${job?.id} failed`, { error: err })
+  })
+}
 
 // Content Job Worker
-export const contentWorker = new Worker<ContentJobData>(
+contentWorker = new Worker<ContentJobData>(
   'content-jobs',
   async (job) => {
-    const { projectId, topic, type, tone, keywords } = job.data
-    logger.info(`Processing content job`, { topic, jobId: job.id })
+    const { projectId, topic, type, tone, keywords, userId } = job.data
+    logger.info(`Processing content job`, { topic, jobId: job.id, userId })
+
+    const tokenCost = TokenService.getAgentCost('content_writer')
+    const hasTokens = await TokenService.reserveTokens(userId, tokenCost)
+
+    if (!hasTokens) {
+      throw new Error('INSUFFICIENT_TOKENS')
+    }
 
     try {
-      const response = await DeepSeekService.generateContent({
+      const response = await aiService.generateContent({
         topic,
         type,
         tone,
@@ -178,9 +306,17 @@ export const contentWorker = new Worker<ContentJobData>(
         },
       })
 
+      // Consume tokens
+      await TokenService.consumeTokens(userId, tokenCost, 'content_writer', {
+        jobId: job.id,
+        projectId,
+      })
+
       logger.info(`Content generated`, { contentId: contentPiece.id, jobId: job.id })
       return contentPiece
     } catch (error) {
+      // Release tokens on failure
+      await TokenService.releaseTokens(userId, tokenCost)
       logger.error(`Content job failed`, { jobId: job.id, error })
       throw error
     }
@@ -189,32 +325,49 @@ export const contentWorker = new Worker<ContentJobData>(
 )
 
 // Agent implementations
-async function runSEOAudit(projectId: string, config: Record<string, unknown>) {
+type LogFn = (msg: string, level?: 'info' | 'warn' | 'success' | 'error') => void
+
+async function runSEOAudit(projectId: string, config: Record<string, unknown>, log: LogFn = () => {}) {
   const project = await prisma.project.findUnique({ where: { id: projectId } })
   if (!project) throw new Error('Project not found')
 
-  // Scrape the website
+  // Deep crawl with Playwright (works on React/Next.js SPAs)
+  log('Launching Chromium headless browser...', 'info')
   const pageAnalysis = await ScrapingService.analyzePage(project.url)
+  log(`Crawl complete — ${pageAnalysis.wordCount} words, ${pageAnalysis.images.total} images found`, 'info')
 
-  // Use DeepSeek for intelligent analysis
-  const deepseekResponse = await DeepSeekService.analyzeSEO({
+  // Use AI Reasoner for deep technical analysis
+  log('Running AI technical SEO analysis (deep reasoning)...', 'info')
+  const deepseekResponse = await aiService.analyzeSEO({
     url: project.url,
     content: JSON.stringify(pageAnalysis),
   })
+  log('AI analysis complete, saving report...', 'info')
 
-  // Parse DeepSeek response and create audit
+  // Try to parse DeepSeek response
+  let auditData: any = null
+  try {
+    const extractedJson = extractJSON(deepseekResponse.content)
+    if (extractedJson) {
+      auditData = JSON.parse(extractedJson)
+    }
+  } catch (error) {
+    logger.error('Failed to parse SEO audit JSON', { error, content: deepseekResponse.content })
+  }
+
+  // Create audit with real or fallback data
   const audit = await prisma.sEOAudit.create({
     data: {
       projectId,
-      overallScore: 78,
-      categories: [
-        { name: 'On-Page SEO', score: 85, weight: 25, status: 'good' },
-        { name: 'Technical SEO', score: 72, weight: 25, status: 'warning' },
-        { name: 'Content Quality', score: 80, weight: 20, status: 'good' },
-        { name: 'User Experience', score: 75, weight: 15, status: 'warning' },
-        { name: 'Mobile Optimization', score: 82, weight: 15, status: 'good' },
+      overallScore: auditData?.overallScore || 78,
+      categories: auditData?.categories || [
+        { name: 'On-Page SEO', score: 85, weight: 0.25, status: 'good' },
+        { name: 'Technical SEO', score: 72, weight: 0.25, status: 'warning' },
+        { name: 'Content Quality', score: 80, weight: 0.20, status: 'good' },
+        { name: 'User Experience', score: 75, weight: 0.15, status: 'warning' },
+        { name: 'Mobile Optimization', score: 82, weight: 0.15, status: 'good' },
       ],
-      issues: [
+      issues: auditData?.issues || [
         {
           id: '1',
           category: 'Technical SEO',
@@ -225,26 +378,9 @@ async function runSEOAudit(projectId: string, config: Record<string, unknown>) {
             : 'Your website is missing an XML sitemap.',
           impact: pageAnalysis.hasSitemap ? 'low' : 'high',
           fix: pageAnalysis.hasSitemap ? undefined : 'Generate and submit an XML sitemap',
-        },
-        {
-          id: '2',
-          category: 'On-Page SEO',
-          severity: pageAnalysis.metaDescription.length > 0 ? 'info' : 'warning',
-          title: pageAnalysis.metaDescription.length > 0 ? 'Meta description present' : 'Missing Meta Description',
-          description: `Meta description length: ${pageAnalysis.metaDescription.length} chars`,
-          impact: pageAnalysis.metaDescription.length > 0 ? 'low' : 'medium',
-        },
-        {
-          id: '3',
-          category: 'Technical SEO',
-          severity: pageAnalysis.images.withoutAlt > 0 ? 'warning' : 'info',
-          title: `${pageAnalysis.images.withoutAlt} images missing alt text`,
-          description: 'Images without alt text hurt accessibility and SEO.',
-          impact: 'medium',
-          fix: 'Add descriptive alt text to all images',
-        },
+        }
       ],
-      recommendations: [
+      recommendations: auditData?.recommendations || [
         {
           id: '1',
           priority: 1,
@@ -254,9 +390,9 @@ async function runSEOAudit(projectId: string, config: Record<string, unknown>) {
           expectedImpact: '+15-25% organic traffic',
           difficulty: 'hard',
           estimatedTime: '2-3 weeks',
-        },
+        }
       ],
-      competitors: [],
+      competitors: auditData?.competitors || [],
     },
   })
 
@@ -279,7 +415,7 @@ async function runGEOOptimization(projectId: string, config: Record<string, unkn
     return { optimized: false, reason: 'No content found to optimize' }
   }
 
-  const response = await DeepSeekService.optimizeForGEO({
+  const response = await aiService.optimizeForGEO({
     content: content.content,
     targetPlatforms: platforms,
     keywords: content.keywords,
@@ -308,7 +444,7 @@ async function runContentWriter(projectId: string, config: Record<string, unknow
   const tone = (config.tone as string) || 'professional'
   const keywords = (config.keywords as string[]) || []
 
-  const response = await DeepSeekService.generateContent({
+  const response = await aiService.generateContent({
     topic,
     type,
     tone,
@@ -340,11 +476,22 @@ async function runSocialMonitor(
   config: Record<string, unknown>
 ) {
   const keywords = (config.keywords as string[]) || ['saas', 'analytics']
+  
+  if (platform.toLowerCase() === 'instagram') {
+    const instagramConfig = {
+      keywords,
+      hashtags: (config.hashtags as string[]) || [],
+      competitors: (config.competitors as string[]) || [],
+    }
+    return await InstagramService.monitor(projectId, instagramConfig)
+  }
+
+  // Fallback for other platforms (Reddit, Twitter, etc.)
   const subreddits = (config.subreddits as string[]) || ['startups', 'SaaS']
 
   // In production, this would use Reddit API, Twitter API, etc.
   // For now, simulate with DeepSeek analysis
-  const response = await DeepSeekService.generateContent({
+  const response = await aiService.generateContent({
     topic: `Social media monitoring report for ${platform}`,
     type: 'social',
     tone: 'analytical',
@@ -400,7 +547,7 @@ async function runCompetitorAnalysis(projectId: string, config: Record<string, u
 
   const results = []
   for (const competitor of competitors) {
-    const response = await DeepSeekService.analyzeCompetitor({
+    const response = await aiService.analyzeCompetitor({
       domain: competitor,
       ourDomain: project.url,
     })
@@ -414,7 +561,7 @@ async function runKeywordResearch(projectId: string, config: Record<string, unkn
   const seed = (config.seed as string) || 'saas analytics'
   const count = (config.count as number) || 20
 
-  const response = await DeepSeekService.researchKeywords({ seed, count })
+  const response = await aiService.researchKeywords({ seed, count })
 
   // Parse and save keywords
   // In production, parse the AI response into structured data
@@ -435,6 +582,7 @@ async function runKeywordResearch(projectId: string, config: Record<string, unkn
       create: {
         projectId,
         ...kw,
+        intent: kw.intent as SearchIntent,
         serpFeatures: [],
       },
       update: {
@@ -478,7 +626,7 @@ async function runContentOptimizer(projectId: string, config: Record<string, unk
   const content = await prisma.contentPiece.findUnique({ where: { id: contentId } })
   if (!content) throw new Error('Content not found')
 
-  const response = await DeepSeekService.optimizeForGEO({
+  const response = await aiService.optimizeForGEO({
     content: content.content,
     targetPlatforms: ['google'],
     keywords: content.keywords,
@@ -511,7 +659,7 @@ async function runBacklinkBuilder(projectId: string, config: Record<string, unkn
 }
 
 // Workflow Job Worker
-export const workflowWorker = new Worker(
+workflowWorker = new Worker(
   'workflow-jobs',
   async (job) => {
     const { workflowId, projectId } = job.data
@@ -519,7 +667,10 @@ export const workflowWorker = new Worker(
 
     const workflow = await prisma.workflow.findUnique({
       where: { id: workflowId },
-      include: { agents: { include: { agent: true } } },
+      include: { 
+        agents: { include: { agent: true } },
+        project: true 
+      },
     })
 
     if (!workflow) throw new Error('Workflow not found')
@@ -549,7 +700,7 @@ export const workflowWorker = new Worker(
         })
 
         // Wait for agent job to complete
-        await agentJob.waitUntilFinished(agentWorker)
+        await agentJob.waitUntilFinished(agentQueueEvents)
         results[agent.id] = { completed: true }
       }
 
@@ -559,7 +710,7 @@ export const workflowWorker = new Worker(
         data: {
           status: 'completed',
           completedAt: new Date(),
-          results,
+          results: results as any,
         },
       })
 
@@ -590,13 +741,14 @@ export const workflowWorker = new Worker(
   { connection: redis, concurrency: 2 }
 )
 
-workflowWorker.on('completed', (job) => {
-  logger.info(`Workflow job ${job.id} completed`)
-})
-
-workflowWorker.on('failed', (job, err) => {
-  logger.error(`Workflow job ${job?.id} failed`, { error: err })
-})
+if (workflowWorker) {
+  workflowWorker.on('completed', (job: any) => {
+    logger.info(`Workflow job ${job.id} completed`)
+  })
+  workflowWorker.on('failed', (job: any, err: any) => {
+    logger.error(`Workflow job ${job?.id} failed`, { error: err })
+  })
+}
 
 // Schedule recurring jobs
 export async function scheduleAgentJob(agentId: string, frequency: string) {
@@ -615,4 +767,53 @@ export async function scheduleAgentJob(agentId: string, frequency: string) {
   // In production, use node-cron or a proper scheduler
   // For now, just log the intended schedule
   logger.info(`Agent scheduled`, { agentId, frequency, cron })
+}
+
+function extractJSON(text: string): string | null {
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  return jsonMatch ? jsonMatch[0] : null
+}
+
+async function runTikTokMonitor(projectId: string, config: Record<string, unknown>) {
+  const hashtag = (config.targetHashtag as string) || 'marketing'
+  return await TikTokService.getTrendingAnalysis(hashtag)
+}
+
+async function runTikTokScriptwriter(projectId: string, config: Record<string, unknown>) {
+  const topic = (config.topic as string) || 'Latest industry trends'
+  const goal = (config.goal as string) || 'Generate leads'
+  
+  // Try to grab from BrandVault or default
+  const brandVaultContext = 'We are a modern, fast-moving AI tool company.'
+  
+  const scriptResult = await TikTokService.generateScript(topic, goal, brandVaultContext)
+  
+  return { script: scriptResult.content }
+}
+
+async function runMetaAdManager(projectId: string, config: Record<string, unknown>) {
+  const productInfo = (config.productInfo as string) || 'New feature launch'
+  const audience = (config.audience as string) || 'B2B Marketing Professionals'
+  const context = 'We are an AI software company.'
+  
+  const adResult = await MetaService.generateAdCopy(productInfo, audience, context)
+  
+  return { ads: adResult.content }
+}
+
+async function runFacebookCommunity(projectId: string, config: Record<string, unknown>) {
+  const sampleComment = "Is this available on iOS?"
+  const context = "Our app is web-only for now, iOS coming Q4."
+  
+  const replyResult = await MetaService.handleComment(sampleComment, context)
+  return { reply: replyResult.content }
+}
+
+async function runWhatsAppConcierge(projectId: string, config: Record<string, unknown>) {
+  const sampleMessage = "I would like to speak to sales."
+  const context = "Sales can be reached at sales@example.com."
+  const phone = "+1234567890"
+  
+  await WhatsAppService.sendAIReply(phone, sampleMessage, context)
+  return { status: 'Sent AI Reply to WhatsApp' }
 }

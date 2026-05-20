@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { User, Project, Agent, Notification, Workflow, ContentPiece } from '@/types'
+import type { User, Project, Agent, Notification, Workflow, ContentPiece, TokenWallet } from '@/types'
 
 interface AppState {
   // Auth
@@ -53,6 +53,11 @@ interface AppState {
   setActiveTab: (tab: string) => void
   isLoading: boolean
   setIsLoading: (loading: boolean) => void
+
+  // Billing
+  wallet: TokenWallet | null
+  setWallet: (wallet: TokenWallet | null) => void
+  updateWalletBalance: (balance: number) => void
 }
 
 export const useStore = create<AppState>()(
@@ -140,6 +145,13 @@ export const useStore = create<AppState>()(
       setActiveTab: (tab) => set({ activeTab: tab }),
       isLoading: false,
       setIsLoading: (loading) => set({ isLoading: loading }),
+
+      // Billing
+      wallet: null,
+      setWallet: (wallet) => set({ wallet }),
+      updateWalletBalance: (balance) => set((state) => ({
+        wallet: state.wallet ? { ...state.wallet, balance } : null
+      })),
     }),
     {
       name: 'ai-marketing-suite-storage',

@@ -71,6 +71,36 @@ export const AGENT_TYPES = {
     icon: 'Sparkles',
     color: 'pink',
   },
+  'tiktok-monitor': {
+    label: 'TikTok Monitor',
+    description: 'Track viral trends and hashtags on TikTok',
+    icon: 'Video',
+    color: 'pink',
+  },
+  'tiktok-scriptwriter': {
+    label: 'TikTok Scriptwriter',
+    description: 'Generate high-retention viral video scripts',
+    icon: 'PenTool',
+    color: 'purple',
+  },
+  'meta-ad-manager': {
+    label: 'Meta Ad Manager',
+    description: 'A/B test and optimize Facebook/IG Ads',
+    icon: 'Target',
+    color: 'blue',
+  },
+  'facebook-community': {
+    label: 'Facebook Community',
+    description: 'AI moderation and engagement for Facebook Pages',
+    icon: 'MessageSquare',
+    color: 'sky',
+  },
+  'whatsapp-concierge': {
+    label: 'WhatsApp Concierge',
+    description: 'Automate lead nurturing and support on WhatsApp',
+    icon: 'MessageSquare',
+    color: 'green',
+  },
 } as const
 
 export const SEVERITY_COLORS = {

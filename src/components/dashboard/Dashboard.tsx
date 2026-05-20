@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   TrendingUp,
-  TrendingDown,
   Users,
   Eye,
   MousePointer,
@@ -11,10 +10,10 @@ import {
   Activity,
   ArrowUpRight,
   ArrowDownRight,
+  Zap,
   Bot,
   FileText,
   Share2,
-  Zap,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { projectAPI, agentAPI, analyticsAPI, notificationAPI } from '@/services/api'
@@ -71,7 +70,6 @@ export default function Dashboard() {
   const metrics = project?.metrics
 
   const latestAnalytics = analyticsData?.[analyticsData.length - 1]
-  const previousAnalytics = analyticsData?.[analyticsData.length - 8]
 
   const stats = [
     {

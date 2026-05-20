@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Share2,
   MessageSquare,
@@ -16,29 +16,71 @@ import {
   Hash,
   Activity,
   Search,
+  Instagram,
+  Users,
+  Settings,
+  X,
+  Plus,
+  Loader2,
 } from 'lucide-react'
 import { socialAPI } from '@/services/api'
 import { useStore } from '@/store'
 import { cn } from '@/utils/cn'
 import { formatRelativeTime, formatNumber } from '@/utils/format'
 import type { SocialMention, TrendingTopic } from '@/types'
+import { toast } from 'sonner'
 
 export default function SocialPage() {
   const { currentProject } = useStore()
-  const [platform, setPlatform] = useState<'reddit' | 'hackernews' | 'twitter' | 'linkedin'>('reddit')
+  const queryClient = useQueryClient()
+  const [platform, setPlatform] = useState<'reddit' | 'hackernews' | 'twitter' | 'linkedin' | 'instagram'>('reddit')
   const [sentimentFilter, setSentimentFilter] = useState<string>('all')
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
+  
+  // Instagram specific config
+  const [hashtags, setHashtags] = useState<string[]>([])
+  const [competitors, setCompetitors] = useState<string[]>([])
+  const [newTag, setNewTag] = useState('')
+  const [newComp, setNewComp] = useState('')
 
-  const { data: monitorData } = useQuery({
+  const { data: monitorData, isLoading } = useQuery({
     queryKey: ['social', platform, currentProject?.id],
     queryFn: () => socialAPI.monitor(currentProject?.id || '1', platform),
     enabled: !!currentProject,
   })
+
+  const startMonitorMutation = useMutation({
+    mutationFn: (params: any) => socialAPI.startMonitor(params),
+    onSuccess: () => {
+      toast.success('Monitoring job started successfully')
+      setIsConfigModalOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['social', platform] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to start monitoring')
+    }
+  })
+
+  const handleStartMonitor = () => {
+    if (!currentProject) return
+
+    startMonitorMutation.mutate({
+      projectId: currentProject.id,
+      platform,
+      keywords: currentProject.name.split(' '), // Default keywords
+      ...(platform === 'instagram' && { 
+        hashtags, 
+        competitorProfiles: competitors 
+      })
+    })
+  }
 
   const platforms = [
     { id: 'reddit' as const, label: 'Reddit', icon: MessageSquare },
     { id: 'hackernews' as const, label: 'Hacker News', icon: Share2 },
     { id: 'twitter' as const, label: 'X/Twitter', icon: Share2 },
     { id: 'linkedin' as const, label: 'LinkedIn', icon: Share2 },
+    { id: 'instagram' as const, label: 'Instagram', icon: Instagram },
   ]
 
   const filteredMentions = monitorData?.mentions.filter((m) =>
@@ -54,6 +96,15 @@ export default function SocialPage() {
             Track mentions, sentiment, and trends across social platforms
           </p>
         </div>
+        {platform === 'instagram' && (
+          <button
+            onClick={() => setIsConfigModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-lg text-sm font-medium hover:bg-primary/20 transition-all"
+          >
+            <Settings className="w-4 h-4" />
+            Configure Instagram
+          </button>
+        )}
       </div>
 
       {/* Platform Tabs */}
@@ -174,7 +225,7 @@ export default function SocialPage() {
                     <span>u/{mention.author}</span>
                     <span className="flex items-center gap-1">
                       <ArrowUpRight className="w-3 h-3" />
-                      {mention.upvotes}
+                      {mention.upvotes} {platform === 'instagram' ? 'likes' : 'upvotes'}
                     </span>
                     <span className="flex items-center gap-1">
                       <MessageCircle className="w-3 h-3" />
@@ -247,8 +298,164 @@ export default function SocialPage() {
               ))}
             </div>
           </div>
+
+          {/* Instagram Influencers */}
+          {platform === 'instagram' && monitorData?.influencerMentions && (
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Users className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-medium">Influencer Discovery</h3>
+              </div>
+              <div className="space-y-4">
+                {monitorData.influencerMentions.map((inf) => (
+                  <div key={inf.username} className="flex flex-col gap-1 border-b border-border last:border-0 pb-3 last:pb-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">@{inf.username}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-full capitalize">
+                        {inf.mention_type}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{formatNumber(inf.followers)} followers</span>
+                      <span className="text-green-400">{inf.engagement_rate}% engagement</span>
+                    </div>
+                    <div className="w-full bg-accent rounded-full h-1 mt-1">
+                      <div 
+                        className="bg-primary h-1 rounded-full" 
+                        style={{ width: `${Math.min(100, (inf.reach / 100000) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Instagram Config Modal */}
+      <AnimatePresence>
+        {isConfigModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsConfigModalOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl p-6"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Instagram className="w-5 h-5 text-primary" />
+                  </div>
+                  <h2 className="text-xl font-bold">Instagram Monitoring</h2>
+                </div>
+                <button
+                  onClick={() => setIsConfigModalOpen(false)}
+                  className="p-2 hover:bg-accent rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Hashtags to Track</label>
+                  <div className="flex gap-2 mb-3">
+                    <div className="relative flex-1">
+                      <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <input
+                        type="text"
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        placeholder="marketing, ai, tech..."
+                        className="w-full bg-accent border-none rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-1 focus:ring-primary transition-all"
+                        onKeyPress={(e) => e.key === 'Enter' && (setHashtags([...hashtags, newTag]), setNewTag(''))}
+                      />
+                    </div>
+                    <button
+                      onClick={() => { if(newTag) { setHashtags([...hashtags, newTag]); setNewTag(''); } }}
+                      className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {hashtags.map((tag) => (
+                      <span key={tag} className="flex items-center gap-1.5 px-2.5 py-1 bg-accent rounded-lg text-xs font-medium">
+                        #{tag}
+                        <button onClick={() => setHashtags(hashtags.filter(t => t !== tag))}>
+                          <X className="w-3 h-3 hover:text-red-400" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Competitor Profiles</label>
+                  <div className="flex gap-2 mb-3">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <input
+                        type="text"
+                        value={newComp}
+                        onChange={(e) => setNewComp(e.target.value)}
+                        placeholder="competitor_handle"
+                        className="w-full bg-accent border-none rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-1 focus:ring-primary transition-all"
+                        onKeyPress={(e) => e.key === 'Enter' && (setCompetitors([...competitors, newComp]), setNewComp(''))}
+                      />
+                    </div>
+                    <button
+                      onClick={() => { if(newComp) { setCompetitors([...competitors, newComp]); setNewComp(''); } }}
+                      className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {competitors.map((comp) => (
+                      <span key={comp} className="flex items-center gap-1.5 px-2.5 py-1 bg-accent rounded-lg text-xs font-medium">
+                        @{comp}
+                        <button onClick={() => setCompetitors(competitors.filter(c => c !== comp))}>
+                          <X className="w-3 h-3 hover:text-red-400" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => setIsConfigModalOpen(false)}
+                    className="flex-1 px-4 py-2.5 bg-accent text-accent-foreground rounded-xl text-sm font-bold hover:bg-accent/80 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStartMonitor}
+                    disabled={startMonitorMutation.isPending || (hashtags.length === 0 && competitors.length === 0)}
+                    className="flex-1 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {startMonitorMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      'Start Monitoring'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -21,6 +21,9 @@ model User {
   projects      Project[]
   notifications Notification[]
   apiKeys       ApiKey[]
+  integrations          Integration[]
+  wallet                TokenWallet?
+  geoReviewQueueReviews GEOReviewQueue[] @relation("reviewer")
 
   @@map("users")
 }
@@ -42,8 +45,22 @@ model Project {
   workflows  Workflow[]
   seoAudits  SEOAudit[]
   keywords   Keyword[]
-  analytics  AnalyticsData[]
-  socialData SocialMonitor[]
+  analytics         AnalyticsData[]
+  socialData        SocialMonitor[]
+  searchConsoleData SearchConsoleData[]
+  swarms            Swarm[]
+  competitors       Competitor[]
+  geoRankings            GEORanking[]
+  geoOptimizations       GEOOptimization[]
+  geoCitations            GEOCitationSource[]
+  geoQueryClusters        GEOQueryCluster[]
+  geoEntityCoverage       GEOEntityCoverage[]
+  geoAbTests              GEOABTest[]
+  geoReviewQueue          GEOReviewQueue[]
+  geoCompetitorCitations  GEOCompetitorCitation[]
+  brandVault              BrandKnowledge[]
+  competitorWatchlist     String[] @default([])
+  integrations            Integration[]
 
   @@map("projects")
 }
@@ -68,6 +85,7 @@ model Agent {
   results  AgentResult[]
   metrics  AgentMetrics?
   workflow WorkflowAgent[]
+  swarms   SwarmMember[]
 
   @@map("agents")
 }
@@ -118,6 +136,7 @@ model ContentPiece {
   title            String
   type             ContentType
   status           ContentStatus @default(draft)
+  approvalStatus   ApprovalStatus @default(draft)
   content          String        @db.Text
   seoScore         Int?          @map("seo_score")
   readabilityScore Int?          @map("readability_score")
@@ -129,7 +148,10 @@ model ContentPiece {
   projectId String  @map("project_id")
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  engagement ContentEngagement?
+  engagement    ContentEngagement?
+  schedules     ContentSchedule[]
+  geoABTests    GEOABTest[]
+  geoReviewQueueItems GEOReviewQueue[]
 
   @@map("content_pieces")
 }
@@ -149,14 +171,18 @@ model ContentEngagement {
 }
 
 model SocialMonitor {
-  id        String   @id @default(cuid())
-  platform  String
-  keywords  String[]
-  mentions  Json
-  trending  Json
-  sentiment Json
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                 String    @id @default(cuid())
+  platform           String
+  keywords           String[]
+  hashtags           String[]  @default([])
+  mentions           Json
+  trending           Json
+  sentiment          Json
+  influencerMentions Json      @default("[]") @map("influencer_mentions")
+  competitorProfiles String[]  @default([]) @map("competitor_profiles")
+  lastSyncedAt       DateTime? @map("last_synced_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   projectId String  @map("project_id")
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -222,6 +248,7 @@ model Workflow {
 
   agents WorkflowAgent[]
   runs   WorkflowRun[]
+  nodes  WorkflowNode[]
 
   @@map("workflows")
 }
@@ -281,6 +308,97 @@ model ApiKey {
   @@map("api_keys")
 }
 
+// Vector memory for agent context
+model AgentMemory {
+  id        String   @id @default(cuid())
+  agentId   String   @map("agent_id")
+  content   String
+  embedding Unsupported("vector(1536)")?
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([agentId])
+  @@map("agent_memories")
+}
+
+// Real API integrations
+model Integration {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId     String?   @map("project_id")
+  project       Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  provider      String // google_search_console, google_analytics, slack, wordpress, meta, whatsapp, etc.
+  accessToken   String    @db.Text @map("access_token")
+  refreshToken  String?   @db.Text @map("refresh_token")
+  accountID     String?   @map("account_id") // Meta Ad Account ID
+  phoneNumberID String?   @map("phone_number_id") // WhatsApp Business ID
+  config        Json      @default("{}")
+  isActive      Boolean   @default(true) @map("is_active")
+  lastSyncAt    DateTime? @map("last_sync_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@map("integrations")
+}
+
+// Content calendar / scheduling
+model ContentSchedule {
+  id          String       @id @default(cuid())
+  contentId   String       @map("content_id")
+  content     ContentPiece @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  platform    String // wordpress, twitter, linkedin, webhook
+  scheduledAt DateTime     @map("scheduled_at")
+  publishedAt DateTime?    @map("published_at")
+  status      String       @default("scheduled") // scheduled, published, failed
+  result      Json?
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@map("content_schedules")
+}
+
+// Workflow execution graph (for React Flow)
+model WorkflowNode {
+  id          String   @id @default(cuid())
+  workflowId  String   @map("workflow_id")
+  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  type        String // agent, condition, delay, webhook, cms_publish
+  position    Json // { x, y }
+  data        Json // node config
+  connections String[] // target node ids
+
+  @@map("workflow_nodes")
+}
+
+// Real search console data
+model SearchConsoleData {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  query       String
+  page        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+  date        DateTime @db.Date
+
+  @@unique([projectId, query, page, date])
+  @@map("search_console_data")
+}
+
+// Event log for audit trail
+model EventLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  projectId String?  @map("project_id")
+  type      String // agent_run, content_publish, workflow_trigger, etc.
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, type])
+  @@map("event_logs")
+}
+
 enum UserRole {
   admin
   member
@@ -289,6 +407,7 @@ enum UserRole {
 
 enum Plan {
   free
+  starter
   pro
   enterprise
 }
@@ -312,6 +431,11 @@ enum AgentType {
   backlink_builder
   technical_seo
   content_optimizer
+  tiktok_monitor
+  tiktok_scriptwriter
+  meta_ad_manager
+  facebook_community
+  whatsapp_concierge
 }
 
 enum AgentStatus {
@@ -386,4 +510,521 @@ enum NotificationType {
   warning
   error
   info
+}
+
+model Swarm {
+  id          String        @id @default(cuid())
+  name        String
+  description String
+  goal        String // The high-level objective
+  status      SwarmStatus   @default(idle)
+  strategy    SwarmStrategy @default(sequential) // sequential, parallel, debate, hierarchical
+  projectId   String        @map("project_id")
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  members  SwarmMember[]
+  sessions SwarmSession[]
+  memory   SwarmMemory[]
+
+  @@map("swarms")
+}
+
+model SwarmMember {
+  id          String    @id @default(cuid())
+  swarmId     String    @map("swarm_id")
+  swarm       Swarm     @relation(fields: [swarmId], references: [id], onDelete: Cascade)
+  agentId     String    @map("agent_id")
+  agent       Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  role        SwarmRole @default(executor)
+  order       Int       @default(0) // execution order for sequential
+  canDelegate Boolean   @default(false)
+  config      Json      @default("{}")
+
+  @@unique([swarmId, agentId])
+  @@map("swarm_members")
+}
+
+model SwarmSession {
+  id          String        @id @default(cuid())
+  swarmId     String        @map("swarm_id")
+  swarm       Swarm         @relation(fields: [swarmId], references: [id], onDelete: Cascade)
+  status      SessionStatus @default(running)
+  input       Json // Initial task/context
+  output      Json? // Final consolidated output
+  startedAt   DateTime      @default(now()) @map("started_at")
+  completedAt DateTime?     @map("completed_at")
+
+  messages  SwarmMessage[]
+  artifacts SwarmArtifact[]
+
+  @@map("swarm_sessions")
+}
+
+model SwarmMessage {
+  id          String      @id @default(cuid())
+  sessionId   String      @map("session_id")
+  session     SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fromAgentId String      @map("from_agent_id")
+  toAgentId   String?     @map("to_agent_id") // null = broadcast
+  type        MessageType @default(observation)
+  content     String      @db.Text
+  payload     Json        @default("{}") // structured data
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@index([sessionId, createdAt])
+  @@map("swarm_messages")
+}
+
+model SwarmMemory {
+  id            String   @id @default(cuid())
+  swarmId       String   @map("swarm_id")
+  swarm         Swarm    @relation(fields: [swarmId], references: [id], onDelete: Cascade)
+  key           String // e.g., "competitor_insights", "keyword_opportunities"
+  value         Json
+  confidence    Float    @default(1.0) // 0-1, agents can disagree
+  sourceAgentId String?  @map("source_agent_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([swarmId, key])
+  @@map("swarm_memories")
+}
+
+model SwarmArtifact {
+  id          String       @id @default(cuid())
+  sessionId   String       @map("session_id")
+  session     SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  agentId     String       @map("agent_id")
+  type        String // audit_report, content_draft, keyword_list, strategy
+  name        String
+  content     Json
+  approved    Boolean      @default(false)
+  approvedBy  String?      @map("approved_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@map("swarm_artifacts")
+}
+
+enum SwarmStatus {
+  idle
+  running
+  completed
+  error
+  paused
+}
+
+enum SwarmStrategy {
+  sequential // One after another, passing context
+  parallel // All at once, then synthesize
+  debate // Agents argue, consensus required
+  hierarchical // Manager delegates to workers
+}
+
+enum SwarmRole {
+  coordinator // Orchestrates, assigns tasks
+  researcher // Gathers data
+  executor // Does the work
+  critic // Reviews and challenges
+  optimizer // Improves based on feedback
+}
+
+enum SessionStatus {
+  running
+  synthesizing
+  completed
+  failed
+}
+
+enum MessageType {
+  task // Assignment
+  observation // Findings
+  question // Needs clarification
+  critique // Challenge/feedback
+  consensus // Agreement
+  delegate // Pass to another agent
+}
+
+model Competitor {
+  id              String   @id @default(cuid())
+  domain          String
+  name            String?
+  logo            String?
+  description     String?  @db.Text
+  
+  // Metrics (latest snapshot)
+  domainAuthority Int?     @map("domain_authority")
+  backlinks       Int      @default(0)
+  organicKeywords Int      @default(0) @map("organic_keywords")
+  organicTraffic  Int      @default(0) @map("organic_traffic")
+  contentPieces   Int      @default(0) @map("content_pieces")
+  
+  // AI Insights (SWOT)
+  strengths       String[]
+  weaknesses      String[]
+  opportunities   String[]
+  threats         String[]
+  techStack       String[] @map("tech_stack")
+  topTopics       String[] @map("top_topics")
+  
+  lastAnalyzedAt  DateTime? @map("last_analyzed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  snapshots CompetitorSnapshot[]
+  gaps      CompetitorGap[]
+
+  @@unique([projectId, domain])
+  @@map("competitors")
+}
+
+model CompetitorSnapshot {
+  id              String   @id @default(cuid())
+  competitorId    String   @map("competitor_id")
+  competitor      Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  
+  capturedAt      DateTime @default(now()) @map("captured_at")
+  domainAuthority Int?     @map("domain_authority")
+  backlinks       Int
+  organicKeywords Int      @map("organic_keywords")
+  organicTraffic  Int      @map("organic_traffic")
+  contentPieces   Int      @default(0) @map("content_pieces")
+  
+  @@index([competitorId, capturedAt])
+  @@map("competitor_snapshots")
+}
+
+model CompetitorGap {
+  id              String   @id @default(cuid())
+  competitorId    String   @map("competitor_id")
+  competitor      Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  
+  type            String   // keyword, content, backlink, feature
+  priority        String   // high, medium, low
+  status          String   @default("identified") // identified, analyzing, resolved
+  
+  theirAdvantage  String   @db.Text @map("their_advantage")
+  theirExample    String?  @map("their_example") // URL
+  ourState        String   @db.Text @map("our_state")
+  action          String   @db.Text // Recommended action
+  
+  estimatedImpact String?  @map("estimated_impact")
+  difficulty      String   // easy, moderate, hard
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("competitor_gaps")
+}
+
+// Token Wallet - Core of the system
+model TokenWallet {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Current balance
+  balance       Int      @default(0)
+  reserved      Int      @default(0) // Tokens reserved for pending operations
+  
+  // Plan allocation
+  plan          Plan     @default(free)
+  monthlyAllocation Int  @default(0) @map("monthly_allocation")
+  rolloverEnabled   Boolean @default(false) @map("rollover_enabled")
+  
+  // Billing
+  stripeCustomerId     String? @map("stripe_customer_id")
+  stripeSubscriptionId String? @map("stripe_subscription_id")
+  
+  // Tracking
+  totalConsumed   Int     @default(0) @map("total_consumed")
+  totalPurchased  Int     @default(0) @map("total_purchased")
+  lastResetAt     DateTime? @map("last_reset_at")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  transactions TokenTransaction[]
+  
+  @@map("token_wallets")
+}
+
+// Every token movement is recorded
+model TokenTransaction {
+  id          String   @id @default(cuid())
+  walletId    String   @map("wallet_id")
+  wallet      TokenWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  
+  type        TransactionType
+  amount      Int // Positive for credit, negative for debit
+  
+  // Context
+  feature     String?  // 'seo_audit', 'content_generation', etc.
+  agentId     String?  @map("agent_id")
+  projectId   String?  @map("project_id")
+  description String?
+  
+  // Metadata
+  metadata    Json?    // { tokens_used: 1500, model: 'deepseek-chat', etc. }
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([walletId, createdAt])
+  @@index([feature])
+  @@map("token_transactions")
+}
+
+// Token Packages for purchase
+model TokenPackage {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  tokenAmount Int      @map("token_amount")
+  priceUsd    Decimal  @map("price_usd") @db.Decimal(10, 2)
+  stripePriceId String? @map("stripe_price_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  @@map("token_packages")
+}
+
+// Plan definitions with token allocations
+model PlanDefinition {
+  id              String   @id @default(cuid())
+  plan            Plan     @unique
+  name            String
+  description     String?
+  monthlyTokens   Int      @map("monthly_tokens")
+  maxAgents       Int      @map("max_agents")
+  maxProjects     Int      @map("max_projects")
+  maxWorkflows    Int      @map("max_workflows")
+  features        String[] // Feature flags
+  stripePriceId   String?  @map("stripe_price_id")
+  isActive        Boolean  @default(true) @map("is_active")
+  
+  @@map("plan_definitions")
+}
+
+enum TransactionType {
+  allocation    // Monthly plan reset
+  consumption   // Feature usage
+  purchase      // One-time buy
+  bonus         // Admin grant
+  refund        // Refund
+  rollover      // Unused monthly tokens rolled over
+}
+
+// GEO (Generative Engine Optimization) Models
+
+// Citation sources - tracks which domains AI engines actually cite
+model GEOCitationSource {
+  id            String   @id @default(cuid())
+  projectId     String   @map("project_id")
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  platform      String
+  query         String
+  citedUrl      String   @map("cited_url")
+  citedDomain   String   @map("cited_domain")
+  snippet       String?
+  position      Int      @default(0)
+  citationCount Int      @default(1) @map("citation_count")
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([projectId, platform, query])
+  @@index([projectId, citedDomain])
+  @@map("geo_citation_sources")
+}
+
+// Query clusters - groups semantically similar queries
+model GEOQueryCluster {
+  id              String   @id @default(cuid())
+  projectId       String   @map("project_id")
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clusterName     String   @map("cluster_name")
+  queries         String[]
+  topicCategory   String?  @map("topic_category")
+  avgPosition     Float?   @default(0) @map("avg_position")
+  citationRate    Float?   @default(0) @map("citation_rate")
+  contentGapScore Int?     @default(0) @map("content_gap_score")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@map("geo_query_clusters")
+}
+
+// Entity coverage - tracks entity coverage vs competitors
+model GEOEntityCoverage {
+  id                   String    @id @default(cuid())
+  projectId            String    @map("project_id")
+  project              Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  entityName           String    @map("entity_name")
+  entityType           String    @default("general") @map("entity_type")
+  ourCoverage          Float?    @default(0) @map("our_coverage")
+  competitorAvgCoverage Float?   @default(0) @map("competitor_avg_coverage")
+  semanticRelevance    Float?    @default(0) @map("semantic_relevance")
+  implicitQuestions    String[]  @map("implicit_questions")
+  lastScrapedAt        DateTime? @map("last_scraped_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectId, entityType])
+  @@map("geo_entity_coverage")
+}
+
+// A/B test tracking
+model GEOABTest {
+  id              String           @id @default(cuid())
+  projectId       String           @map("project_id")
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contentId       String?          @map("content_id")
+  content         ContentPiece?    @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  query           String
+  status          String           @default("running")
+  startedAt       DateTime         @default(now()) @map("started_at")
+  completedAt     DateTime?        @map("completed_at")
+  winnerVariantId String?          @map("winner_variant_id")
+  conclusion      String?
+
+  variants GEOABTestVariant[]
+
+  @@index([projectId, status])
+  @@map("geo_ab_tests")
+}
+
+model GEOABTestVariant {
+  id                    String    @id @default(cuid())
+  testId                String    @map("test_id")
+  test                  GEOABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  variantName           String    @map("variant_name")
+  originalContent       String    @db.Text @map("original_content")
+  optimizedContent      String    @db.Text @map("optimized_content")
+  changesApplied        Json      @default("{}") @map("changes_applied")
+  currentPosition       Int?      @map("current_position")
+  baselinePosition      Int?      @map("baseline_position")
+  citationRate          Float?    @default(0) @map("citation_rate")
+  baselineCitationRate  Float?    @default(0) @map("baseline_citation_rate")
+  trafficChange         Int?      @default(0) @map("traffic_change")
+  statisticalSignificance Float?  @default(0) @map("statistical_significance")
+
+  @@index([testId])
+  @@map("geo_ab_test_variants")
+}
+
+// Review queue for auto-optimize approvals
+model GEOReviewQueue {
+  id               String    @id @default(cuid())
+  projectId        String    @map("project_id")
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contentId        String?   @map("content_id")
+  content          ContentPiece? @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  query            String
+  originalContent  String    @db.Text @map("original_content")
+  optimizedContent String    @db.Text @map("optimized_content")
+  changesSummary   Json      @default("{}") @map("changes_summary")
+  severity         String    @default("medium")
+  status           String    @default("pending")
+  autoApplied      Boolean   @default(false) @map("auto_applied")
+  reviewedBy       String?   @map("reviewed_by")
+  reviewer         User?     @relation("reviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewedAt       DateTime? @map("reviewed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@index([projectId, status])
+  @@map("geo_review_queue")
+}
+
+// Competitor citations - track what competitors get cited for
+model GEOCompetitorCitation {
+  id               String   @id @default(cuid())
+  projectId        String   @map("project_id")
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  competitorDomain String   @map("competitor_domain")
+  platform         String
+  query            String
+  citedUrl         String   @map("cited_url")
+  snippet          String?
+  position         Int      @default(0)
+  firstSeenAt      DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt       DateTime @default(now()) @map("last_seen_at")
+  citationCount    Int      @default(1) @map("citation_count")
+
+  @@index([projectId, platform, query])
+  @@map("geo_competitor_citations")
+}
+
+model GEORanking {
+  id                String   @id @default(cuid())
+  projectId         String   @map("project_id")
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  platform          String   // chatgpt, claude, perplexity, gemini
+  query             String
+  position          Int
+  url               String?
+  title             String?
+  snippet           String?  @db.Text
+  optimizationScore Int?     @map("optimization_score")
+  recommendations   Json?    // AI-generated recommendations
+  appliedAt         DateTime? @map("applied_at")
+  timestamp         DateTime @default(now())
+
+  @@index([projectId, platform, query])
+  @@map("geo_rankings")
+}
+
+model GEOOptimization {
+  id              String         @id @default(cuid())
+  projectId       String         @map("project_id")
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  query           String
+  targetUrl       String         @map("target_url")
+  beforeScore     Int
+  afterScore      Int?
+  improvements    Json           // what was changed
+  status          GEOOptStatus   @default(pending)
+  trafficBefore   Int?           @map("traffic_before")
+  trafficAfter    Int?           @map("traffic_after")
+  citationRate    Float?         @map("citation_rate")
+  variantId       String?        @map("variant_id")
+  brandVoiceProfile Json?        @map("brand_voice_profile")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  appliedAt       DateTime?      @map("applied_at")
+
+  @@index([projectId, status])
+  @@map("geo_optimizations")
+}
+
+enum GEOOptStatus {
+  pending
+  applied
+  failed
+  skipped
+}
+
+model BrandKnowledge {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  metadata  Json?
+  vectorId  String?
+  projectId String   @map("project_id")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([projectId])
+  @@map("brand_knowledge")
+}
+
+enum ApprovalStatus {
+  draft
+  pending_review
+  approved
+  rejected
+  published
 }

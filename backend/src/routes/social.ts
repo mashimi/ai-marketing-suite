@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Response } from 'express'
 import { prisma } from '../lib/db'
 import { agentQueue } from '../jobs/queue'
 import { authenticate, AuthRequest } from '../middleware/auth'
@@ -9,7 +9,7 @@ router.use(authenticate)
 
 router.get(
   '/monitor',
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const { projectId, platform } = req.query
 
     const monitor = await prisma.socialMonitor.findFirst({
@@ -46,7 +46,7 @@ router.get(
 
 router.get(
   '/mentions',
-  asyncHandler(async (req: AuthRequest, res) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const { projectId, platform } = req.query
 
     const monitors = await prisma.socialMonitor.findMany({
@@ -68,8 +68,8 @@ router.get(
 
 router.post(
   '/monitor',
-  asyncHandler(async (req: AuthRequest, res) => {
-    const { projectId, platform, keywords } = req.body
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { projectId, platform, keywords, hashtags, competitorProfiles } = req.body
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: req.user!.id },
@@ -85,26 +85,35 @@ router.post(
       hackernews: 'hackernews_monitor',
       twitter: 'twitter_monitor',
       linkedin: 'linkedin_monitor',
+      instagram: 'instagram_monitor',
     }
+
+    const agentType = (agentTypeMap[platform] || 'reddit_monitor') as any
 
     let agent = await prisma.agent.findFirst({
       where: {
         projectId,
-        type: agentTypeMap[platform] as any,
+        type: agentType,
       },
     })
+
+    const config = { 
+      keywords, 
+      platform,
+      ...(platform === 'instagram' && { hashtags, competitorProfiles })
+    }
 
     if (!agent) {
       agent = await prisma.agent.create({
         data: {
           name: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Monitor`,
-          type: agentTypeMap[platform] as any,
+          type: agentType,
           status: 'idle',
           description: `Monitor ${platform} for mentions and trends`,
-          icon: 'MessageSquare',
+          icon: platform === 'instagram' ? 'Instagram' : 'MessageSquare',
           frequency: 'hourly',
           projectId,
-          config: { keywords, platform },
+          config,
           metrics: {
             create: {
               tasksCompleted: 0,
@@ -123,12 +132,12 @@ router.post(
       projectId,
       userId: req.user!.id,
       type: agent.type,
-      config: { keywords, platform },
+      config,
     })
 
     await prisma.agent.update({
       where: { id: agent.id },
-      data: { status: 'running' },
+      data: { status: 'running', config },
     })
 
     res.json({ success: true, jobId: job.id, agentId: agent.id })

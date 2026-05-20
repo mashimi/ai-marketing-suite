@@ -52,8 +52,9 @@ export default function KeywordsPage() {
       k.keyword.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => {
-      const aVal = a[sortBy] || 0
-      const bVal = b[sortBy] || 0
+      const key = sortBy === 'position' ? 'currentPosition' : sortBy
+      const aVal = a[key] || 0
+      const bVal = b[key] || 0
       return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
     })
 

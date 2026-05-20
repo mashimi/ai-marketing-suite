@@ -1,27 +1,29 @@
 # AI Marketing Suite 🚀
 
-A high-performance, enterprise-grade AI Marketing Automation platform. This suite integrates state-of-the-art AI agents with real-time analytics to automate SEO, content strategy, and social monitoring. Built with a robust full-stack architecture using React, Node.js, PostgreSQL, and Redis.
+A high-performance, enterprise-grade AI Marketing Automation platform. This suite integrates state-of-the-art AI agents with real-time analytics to automate SEO, content strategy, and social monitoring. Built with a robust event-driven architecture using React, Node.js, PostgreSQL (pgvector), and Redis.
 
 ## 📱 UI Preview
 
 <div align="center">
-  <img src="screenshots/dashboard.png" alt="Dashboard" width="800" />
-  <p><em>Real-time Dashboard with traffic analytics and agent status monitoring</em></p>
+  <img src="public/screenshots/workflow_builder.png" alt="Workflow Architect" width="800" />
+  <p><em>Advanced Visual Workflow Architect: Orchestrate multi-agent autonomous pipelines with logic nodes and CMS integration.</em></p>
   
   <br />
   
-  <img src="screenshots/agents.png" alt="AI Agents" width="800" />
-  <p><em>Advanced AI Agent management and monitoring interface</em></p>
+  <img src="public/screenshots/seo_audit.png" alt="SEO Performance Lab" width="800" />
+  <p><em>SEO Performance Lab: Real-time technical auditing with competitive intelligence and automated PDF report generation.</em></p>
 </div>
 
-## 🌟 Core Value Proposition
+## 🌟 Enterprise Features
 
 The AI Marketing Suite moves beyond simple content generation. It provides a **synchronized ecosystem** where AI agents monitor the web, audit technical health, and execute marketing workflows autonomously.
 
-- **Unified Intelligence**: 12+ specialized AI agents working on a single project context.
-- **Persistent Memory**: System-wide notifications and project states persisted across sessions.
-- **Asynchronous Scalability**: Background job processing via BullMQ ensures the UI remains responsive during complex AI tasks.
-- **Data-Driven Insights**: Real-time traffic analytics and competitor benchmarking.
+- **Visual Workflow Orchestration**: Build complex agent pipelines using a drag-and-drop React Flow interface.
+- **Multi-Model AI Routing**: Intelligent routing between OpenAI, DeepSeek, and local models with semantic caching and cost tracking.
+- **Vector-Based Long Term Memory**: Agents utilize `pgvector` for persistent context and semantic retrieval across sessions.
+- **Real-Time Event Bus**: Redis-backed event distribution system for bi-directional communication via WebSockets (Socket.io).
+- **Automated Reporting Engine**: Puppeteer-driven PDF generation for professional, branded SEO audits and performance reports.
+- **CMS Auto-Publishing**: Direct integration for publishing generated content to various platforms (WordPress, Webflow, etc.).
 
 ---
 
@@ -29,19 +31,19 @@ The AI Marketing Suite moves beyond simple content generation. It provides a **s
 
 ### Frontend (Modern Client)
 - **Framework**: [React 18](https://reactjs.org/) with [Vite](https://vitejs.dev/)
-- **State Management**: [Zustand](https://github.com/pmndrs/zustand) with `persist` middleware for local cache.
-- **Data Fetching**: [TanStack Query v5](https://tanstack.com/query/latest) for server-state synchronization.
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) with a custom Glassmorphic design system.
-- **Visuals**: [Framer Motion](https://www.framer.com/motion/) for micro-interactions and [Recharts](https://recharts.org/) for data viz.
-- **UI Components**: [Radix UI](https://www.radix-ui.com/) primitives for high accessibility (A11y).
+- **Visual Logic**: [React Flow](https://reactflow.dev/) for interactive workflow orchestration.
+- **State Management**: [Zustand](https://github.com/pmndrs/zustand) with `persist` middleware.
+- **Real-time**: [Socket.io Client](https://socket.io/) for live event updates and notifications.
+- **Styling**: Vanilla CSS + [Tailwind CSS](https://tailwindcss.com/) with a custom Glassmorphic design system.
+- **Motion UX**: [Framer Motion](https://www.framer.com/motion/) for fluid transitions.
 
 ### Backend (Production Grade)
-- **Runtime**: [Node.js](https://nodejs.org/) with [TypeScript](https://www.typescriptlang.org/) (`tsx`).
-- **Framework**: [Express.js](https://expressjs.com/) with high-security middleware (Helmet, CORS, Rate Limiting).
-- **Database**: [PostgreSQL](https://www.postgresql.org/) (via [Neon](https://neon.tech/)) with [Prisma ORM](https://www.prisma.io/).
-- **Caching & Queues**: [Redis](https://redis.io/) (via [Upstash](https://upstash.com/)) with [BullMQ](https://docs.bullmq.io/).
-- **AI Integration**: [OpenAI SDK](https://github.com/openai/openai-node) (compatible with DeepSeek and other LLMs).
-- **Authentication**: Stateless JWT-based auth with bcrypt password hashing.
+- **Runtime**: [Node.js](https://nodejs.org/) with [TypeScript](https://www.typescriptlang.org/).
+- **Database**: [PostgreSQL](https://www.postgresql.org/) with **pgvector** for semantic search.
+- **ORM**: [Prisma](https://www.prisma.io/) for type-safe database access.
+- **Messaging**: [Redis](https://redis.io/) Streams/PubSub for the distributed Event Bus.
+- **Automation**: [Puppeteer](https://pptr.dev/) for high-fidelity PDF report generation.
+- **AI Integration**: Custom **AI Router** with support for multi-provider streaming and caching.
 
 ---
 
@@ -50,37 +52,11 @@ The AI Marketing Suite moves beyond simple content generation. It provides a **s
 | Agent Type | Capability | Use Case |
 | :--- | :--- | :--- |
 | **SEO Audit** | Deep technical crawl & score | Website health & optimization |
-| **GEO Optimizer** | AI Search Engine Optimization | Ranking in ChatGPT/Claude/Perplexity |
-| **Content Writer** | Long-form SEO blog generation | Content marketing at scale |
-| **Social Monitors** | Reddit, HN, X, LinkedIn tracking | Lead gen & brand sentiment |
-| **Keywords** | Volume & Difficulty analysis | Competitive research |
-| **Workflows** | Multi-step agent orchestration | Automating repetitive marketing tasks |
-
----
-
-## 📂 Project Structure
-
-```bash
-ai-marketing-suite/
-├── backend/                # Express Server (TypeScript)
-│   ├── prisma/             # Database Schema & Migrations
-│   ├── src/
-│   │   ├── routes/         # API Endpoints (SEO, Keywords, Auth, etc.)
-│   │   ├── services/       # Business Logic & AI Integrations
-│   │   ├── workers/        # BullMQ Background Job Processors
-│   │   └── server.ts       # Entry point
-│   └── scripts/            # Database Seeding & Maintenance
-├── src/                    # React Frontend
-│   ├── components/
-│   │   ├── agents/         # AI Agent Specific UIs
-│   │   ├── dashboard/      # Analytics & Overview
-│   │   └── ui/             # Reusable Design System Components
-│   ├── store/              # Zustand Global State
-│   ├── services/           # Axios API Client Layer
-│   └── types/              # Unified TypeScript Interfaces
-├── public/                 # Static Assets
-└── tailwind.config.js      # Design Token Definitions
-```
+| **Workflow Architect**| Multi-step orchestration | Automating repetitive marketing tasks |
+| **Content Strategist**| Long-form SEO blog generation | Content marketing at scale |
+| **Social Lead Gen** | Reddit, HN, X tracking | Lead gen & brand sentiment |
+| **Vector Memory** | Semantic retrieval of context | Persistent knowledge across agents |
+| **Reporting Agent** | Automated PDF delivery | Stakeholder reporting & transparency |
 
 ---
 
@@ -88,17 +64,16 @@ ai-marketing-suite/
 
 ### Prerequisites
 - **Node.js**: v18.0.0 or higher
-- **PostgreSQL**: A running instance (or Neon connection string)
-- **Redis**: A running instance (or Upstash connection string)
+- **PostgreSQL**: With `pgvector` extension enabled
+- **Redis**: A running instance for Event Bus and Caching
 
 ### 1. Backend Setup
 ```bash
 cd backend
 npm install
-cp .env.example .env  # Configure your DATABASE_URL and REDIS_URL
+cp .env.example .env  # Configure DATABASE_URL, REDIS_URL, and OPENAI_API_KEY
 npx prisma generate
 npx prisma migrate dev
-npm run db:seed       # Populate with high-fidelity demo data
 npm run dev           # Runs on http://localhost:3002
 ```
 
@@ -106,47 +81,36 @@ npm run dev           # Runs on http://localhost:3002
 ```bash
 # From root directory
 npm install
-cp .env.example .env  # Ensure VITE_API_URL=http://localhost:3002/api
 npm run dev           # Runs on http://localhost:3000
 ```
 
 ---
 
-## 📡 API Integration & Persistence
+## 📡 Advanced Architecture
 
-### Notification System
-The suite features a persistent notification engine. Notifications are:
-1. **Triggered** by backend events (Job completion, Project creation).
-2. **Synchronized** via the `useStore` Zustand store.
-3. **Persisted** to `localStorage` using the `persist` middleware, ensuring you never miss an alert after a refresh.
+### Real-Time Notification System
+The suite features a persistent notification engine driven by the Redis Event Bus.
+1. **Trigger**: An agent completes a task (e.g., SEO Audit finished).
+2. **Event Bus**: The backend worker emits an event to the Redis stream.
+3. **Socket.io**: The server broadcasts the event to the specific user's socket.
+4. **Zustand**: The frontend store updates in real-time, triggering the notification bell and toast alerts.
 
-### Background Job Flow
-1. User clicks "Run SEO Audit".
-2. Frontend sends a request to `/api/seo/audit`.
-3. Backend pushes a job to **BullMQ**.
-4. **Worker** processes the site (OpenAI + Cheerio).
-5. **Worker** saves results to PostgreSQL.
-6. User is notified of completion.
+### AI Routing & Semantic Cache
+To optimize costs and latency, all AI requests pass through the `AIRouter`:
+- **Caching**: Results are cached in Redis using semantic hashing.
+- **Cost Tracking**: Every token usage is logged to PostgreSQL for enterprise billing/usage transparency.
+- **Streaming**: Supports Server-Sent Events (SSE) for real-time content generation previews.
 
 ---
 
 ## 🎨 Design Philosophy
 
-We adhere to a **Premium Dark Aesthetic**:
-- **Glassmorphism**: Using `backdrop-blur` and subtle borders to create depth.
-- **Consistent Tokens**: Every spacing, color, and shadow is derived from `tailwind.config.js`.
-- **Motion UX**: Every page transition and modal uses Framer Motion for a "native-app" feel.
-- **Responsiveness**: Mobile-first grid layouts for monitoring on the go.
-
----
-
-## 🔐 Security & Production Ready
-- **Rate Limiting**: Protected against brute force and API abuse.
-- **JWT Auth**: Secure session management.
-- **Type Safety**: End-to-end typing from database to UI.
-- **Clean Architecture**: Separation of concerns between API, Services, and State.
+We adhere to a **Premium Enterprise Aesthetic**:
+- **Glassmorphism**: Using `backdrop-blur` and sleek border gradients for depth.
+- **Micro-animations**: Subtle hover effects and layout transitions for a "responsive" feel.
+- **Dynamic Gauges**: Custom SVG-based visualizations for SEO scores and performance metrics.
 
 ---
 
 ## 📄 License
-MIT License - feel free to use and extend!
+MIT License - Developed by Antigravity (DeepMind Advanced Agentic Coding).
